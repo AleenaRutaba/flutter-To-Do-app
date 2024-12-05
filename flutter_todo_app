@@ -1,0 +1,170 @@
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
+
+void main() {
+  return runApp(MyApp());
+}
+
+class MyApp extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return ChangeNotifierProvider(
+      create: (_) => TaskProvider(),
+      child: MaterialApp(
+        home: ToDoApp(),
+        debugShowCheckedModeBanner: false,
+      ),
+    );
+  }
+}
+
+class ToDoApp extends StatelessWidget {
+  final TextEditingController taskController = TextEditingController();
+
+  @override
+  Widget build(BuildContext context) {
+    final taskProvider = Provider.of<TaskProvider>(context);
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text("To-Do App"),
+        centerTitle: true,
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: taskController,
+                    decoration: InputDecoration(
+                      labelText: "Add a task",
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ),
+                SizedBox(width: 10),
+                ElevatedButton(
+                  onPressed: () {
+                    if (taskController.text.isNotEmpty) {
+                      taskProvider.addTask(taskController.text);
+                      taskController.clear();
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text("Task Added!")),
+                      );
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text("Task cannot be empty")),
+                      );
+                    }
+                  },
+                  child: Text("Add"),
+                ),
+              ],
+            ),
+            SizedBox(height: 20),
+            Expanded(
+              child: ListView.builder(
+                itemCount: taskProvider.tasks.length,
+                itemBuilder: (context, index) {
+                  final task = taskProvider.tasks[index];
+                  return ListTile(
+                    title: Text(
+                      task.title,
+                      style: TextStyle(
+                        decoration: task.isCompleted
+                            ? TextDecoration.lineThrough
+                            : TextDecoration.none,
+                      ),
+                    ),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Checkbox(
+                          value: task.isCompleted,
+                          onChanged: (value) {
+                            taskProvider.toggleTask(index);
+                          },
+                        ),
+                        IconButton(
+                          icon: Icon(Icons.delete, color: Colors.blue),
+                          onPressed: () => taskProvider.deleteTask(index),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class Task {
+  String title;
+  bool isCompleted;
+
+  Task(this.title, this.isCompleted);
+
+  Map<String, dynamic> toJson() => {
+        'title': title,
+        'isCompleted': isCompleted,
+      };
+
+  static Task fromJson(Map<String, dynamic> json) {
+    return Task(json['title'], json['isCompleted']);
+  }
+}
+
+class TaskProvider with ChangeNotifier {
+  List<Task> _tasks = [];
+
+  List<Task> get tasks {
+    return _tasks;
+  }
+
+  TaskProvider() {
+    loadTasks();
+  }
+
+  void addTask(String title) {
+    _tasks.add(Task(title, false));
+    saveTasks();
+    notifyListeners();
+  }
+
+  void deleteTask(int index) {
+    _tasks.removeAt(index);
+    saveTasks();
+    notifyListeners();
+  }
+
+  void toggleTask(int index) {
+    _tasks[index].isCompleted = !_tasks[index].isCompleted;
+    saveTasks();
+    notifyListeners();
+  }
+
+  Future<void> saveTasks() async {
+    final prefs = await SharedPreferences.getInstance();
+    prefs.setString('tasks', jsonEncode(_tasks));
+  }
+
+  Future<void> loadTasks() async {
+    final prefs = await SharedPreferences.getInstance();
+    final tasksString = prefs.getString('tasks');
+    if (tasksString != null) {
+      _tasks = (jsonDecode(tasksString) as List)
+          .map((json) => Task.fromJson(json))
+          .toList();
+      notifyListeners();
+    }
+  }
+}
